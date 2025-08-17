@@ -2,12 +2,10 @@ import streamlit as st
 import sqlite3
 from datetime import date, datetime, timedelta
 import pandas as pd
-import json, hashlib, os
-import babel 
+import json, hashlib, os, unicodedata
+import babel
 
-
-
-# --- Monedas globales ---
+# Monedas globales
 from babel.numbers import format_currency, get_currency_symbol
 import pycountry
 
@@ -17,7 +15,6 @@ DB_PATH = "budget.db"
 def list_all_currencies():
     items, seen = [], set()
     try:
-        # pycountry expone un iterable de monedas
         for cur in list(pycountry.currencies):
             code = getattr(cur, "alpha_3", None)
             if not code or code in seen:
@@ -30,9 +27,7 @@ def list_all_currencies():
                 sym = ""
             items.append((code, name, sym))
     except Exception:
-        # Fallback pequeño por si pycountry no está disponible o falla el iterable
         items = [("USD", "US Dollar", "$"), ("EUR", "Euro", "€"), ("CRC", "Costa Rican Colón", "₡")]
-
     items.sort(key=lambda x: x[0])
     return items
 
@@ -47,10 +42,139 @@ def money(amount: float, code: str, locale: str) -> str:
         except Exception: pass
         return f"{sym}{amount:,.2f}"
 
+# ===================== THEME KEYWORDS (español universal) =====================
+THEME_KEYWORDS = {
+    "Hogar": ["hogar", "casa", "renta", "alquiler", "hipoteca", "servicios", "electricidad", "agua", "gas", "internet", "teléfono", "muebles", "electrodomésticos", "decoración"],
+    "Alimentación": ["alimento", "comida", "supermercado", "mercado", "restaurante", "delivery", "cafetería", "bebidas", "snacks"],
+    "Transporte": ["transporte", "gasolina", "peaje", "estacionamiento", "mantenimiento", "bus", "metro", "uber", "didi", "bicicleta", "moto", "avión"],
+    "Salud": ["salud", "medicina", "farmacia", "hospital", "clínica", "consulta", "doctor", "dentista", "odontología", "lentes", "seguro médico", "gimnasio"],
+    "Educación": ["educación", "universidad", "colegiatura", "libros", "cursos", "capacitaciones", "talleres", "idiomas"],
+    "Entretenimiento": ["entretenimiento", "suscripción", "streaming", "spotify", "netflix", "disney", "videojuegos", "ocio", "cine", "eventos", "conciertos"],
+    "Compras personales": ["compras", "ropa", "zapatos", "accesorios", "peluquería", "spa", "cosméticos", "perfumes", "cuidado personal"],
+    "Viajes": ["viaje", "vacaciones", "hotel", "vuelos", "excursiones", "turismo"],
+    "Deudas": ["deuda", "tarjeta de crédito", "préstamo", "hipoteca", "automotriz", "microcrédito"],
+    "Obligaciones": ["impuesto", "trámite", "seguro", "seguro auto", "seguro vivienda"],
+    "Ahorro e inversión": ["ahorro", "fondo", "emergencia", "inversión", "acciones", "criptomoneda", "retiro"],
+    "Solidaridad": ["donación", "caridad", "iglesia", "diezmo", "ofrenda", "regalo", "apoyo"],
+    "Familia": ["familia", "niños", "guardería", "cuidado de mayores", "mascotas"],
+    "Ingresos": ["ingreso", "salario", "freelance", "emprendimiento", "negocio", "bono", "inversiones"],
+    "Bienestar": ["bienestar", "ansiedad", "emergencia", "terapia", "recreación", "hobby", "descanso"]
+}
+
+# ===================== Normalización y carga de mapeo =====================
+def _norm(s: str) -> str:
+    if not s: return ""
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    return " ".join(s.lower().strip().split())
+
+_CATEGORY_THEME = None
+def load_category_theme_map(path="data/category_theme_map.json"):
+    """Carga category->tema desde JSON externo (español universal)"""
+    global _CATEGORY_THEME
+    if _CATEGORY_THEME is not None:
+        return _CATEGORY_THEME
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        _CATEGORY_THEME = { _norm(k): v for k, v in raw.items() }
+    except Exception:
+        _CATEGORY_THEME = {}
+    return _CATEGORY_THEME
+
+def get_display_categories():
+    """Devuelve categorías 'humanas' para los dropdowns (valores del map) con fallback."""
+    cmap = load_category_theme_map()
+    if cmap:
+        cats = sorted(set(cmap.values()))
+    else:
+        cats = ["Hogar","Alimentación","Transporte","Salud","Educación","Entretenimiento",
+                "Compras personales","Viajes","Deudas","Obligaciones",
+                "Ahorro e inversión","Solidaridad","Familia","Ingresos","Bienestar"]
+    return cats
+
+def get_theme_for_category(category: str) -> str | None:
+    """Si ya es un tema conocido, regrésalo. Si no, intenta por map y heurística."""
+    if not category:
+        return None
+    # 0) Si el texto coincide directamente con un tema
+    if category in THEME_KEYWORDS:
+        return category
+
+    cat = _norm(category)
+    cmap = load_category_theme_map()
+
+    # 1) exacto
+    if cat in cmap:
+        return cmap[cat]
+
+    # 2) substring
+    for key, theme in cmap.items():
+        if key and key in cat:
+            return theme
+
+    # 3) heurística: busca palabras en THEME_KEYWORDS
+    for theme, kws in THEME_KEYWORDS.items():
+        for kw in kws:
+            if _norm(kw) in cat:
+                return theme
+    return None
+
+# ===================== Versículos =====================
+_VERS_CACHE = None
+def load_verses(path="data/verses.json"):
+    global _VERS_CACHE
+    if _VERS_CACHE is not None:
+        return _VERS_CACHE
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            verses = json.load(f)
+        _VERS_CACHE = verses if isinstance(verses, list) else []
+    except Exception:
+        _VERS_CACHE = []
+    return _VERS_CACHE
+
+def pick_deterministic(items, seed: str):
+    if not items:
+        return None
+    h = int(hashlib.sha256(seed.encode()).hexdigest(), 16)
+    return items[h % len(items)]
+
+def verse_of_the_day(path="data/verses.json"):
+    verses = load_verses(path)
+    if not verses:
+        return "No se encontró o está vacío data/verses.json."
+    today = date.today().isoformat()
+    v = pick_deterministic(verses, seed=today)
+    return f"{v['text']} — {v['book']} {v['chapter']}:{v['verse']}"
+
+def verses_by_theme(theme: str, limit=5):
+    verses = load_verses()
+    if not verses: return []
+    kws = [k.lower() for k in THEME_KEYWORDS.get(theme, [])]
+    if not kws: return []
+    def match(v):
+        t = f"{v.get('text','')} {v.get('book','')}".lower()
+        return any(kw in t for kw in kws)
+    found = [v for v in verses if match(v)]
+    if found:
+        seed = f"{theme}-{date.today().isoformat()}"
+        idx = int(hashlib.sha256(seed.encode()).hexdigest(), 16) % len(found)
+        found = found[idx:] + found[:idx]
+    return found[:limit]
+
+def suggest_verse_for_category(category: str):
+    theme = get_theme_for_category(category)
+    if not theme:
+        return None, None
+    lst = verses_by_theme(theme, limit=1)
+    if not lst:
+        return None, theme
+    v = lst[0]
+    return f"{v['text']} — {v['book']} {v['chapter']}:{v['verse']}", theme
+
 # ===================== DB helpers =====================
 def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    # transacciones (agregamos columna regular INTEGER 0/1)
     conn.execute("""CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         date TEXT NOT NULL,
@@ -59,7 +183,6 @@ def get_conn():
         amount REAL NOT NULL,
         note TEXT
     )""")
-    # budgets
     conn.execute("""CREATE TABLE IF NOT EXISTS budgets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         category TEXT NOT NULL,
@@ -72,7 +195,6 @@ def get_conn():
     return conn
 
 def ensure_schema(conn):
-    # añade columna 'regular' si no existe (0/1)
     cur = conn.execute("PRAGMA table_info(transactions)")
     cols = [r[1] for r in cur.fetchall()]
     if "regular" not in cols:
@@ -105,22 +227,6 @@ def kpis(conn):
     balance = total_ing - total_gas
     by_cat = df[df["type"]=="gasto"].groupby("category")["amount"].sum().sort_values(ascending=False) if not df.empty else pd.Series(dtype=float)
     return total_ing, total_gas, balance, by_cat
-
-# ===================== Versículo del día =====================
-def verse_of_the_day(path="data/verses.json"):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            verses = json.load(f)
-        if not verses:
-            return "No hay versículos en data/verses.json."
-        today = date.today().isoformat()
-        h = int(hashlib.sha256(today.encode()).hexdigest(), 16)
-        v = verses[h % len(verses)]
-        return f"{v['text']} — {v['book']} {v['chapter']}:{v['verse']}"
-    except FileNotFoundError:
-        return "No se encontró data/verses.json."
-    except Exception:
-        return "No fue posible cargar el versículo del día."
 
 # ===================== Presupuestos =====================
 def upsert_budget(conn, category, month, year, amount):
@@ -229,7 +335,7 @@ def recommend_articles(conn, month, year, k=5):
 # ===================== UI =====================
 st.set_page_config(page_title="Budgeting + Versículo + Recos", page_icon="📊", layout="wide")
 st.title("📊 Budgeting + 🙏 Versículo del día + 🧠 Recomendaciones")
-st.caption("M1–M3 con: toggle de versículo, todas las monedas (Babel/pycountry) y campo ‘regular’ en transacciones.")
+st.caption("M1–M4: moneda global, 'regular', presupuestos/alertas, recomendaciones y versículos por tema (categoría como dropdown).")
 
 conn = get_conn()
 
@@ -249,8 +355,21 @@ sel = st.sidebar.selectbox("Moneda", options=list(range(len(codes))), index=defa
 st.session_state.currency = codes[sel]
 
 show_verse = st.sidebar.checkbox("Mostrar versículo del día", value=True)
+auto_verse_on_alert = st.sidebar.checkbox("Sugerir versículo al 80%/100%", value=True)
 
-st.sidebar.header("🗓️ Periodo / Exportación / Recomendaciones")
+st.sidebar.divider()
+st.sidebar.subheader("📖 Versículos por tema")
+theme_options = list(THEME_KEYWORDS.keys())
+sel_theme = st.sidebar.selectbox("Tema", options=theme_options)
+if st.sidebar.button("Ver versículos del tema"):
+    thematics = verses_by_theme(sel_theme, limit=5)
+    if not thematics:
+        st.sidebar.info("No se encontraron versículos para ese tema.")
+    else:
+        for v in thematics:
+            st.sidebar.write(f"• {v['text']} — {v['book']} {v['chapter']}:{v['verse']}")
+
+st.sidebar.header("🗓️ Periodo / Exportación")
 today = date.today()
 s_month = st.sidebar.number_input("Mes", 1, 12, value=today.month)
 s_year  = st.sidebar.number_input("Año", 2000, 2100, value=today.year)
@@ -268,30 +387,34 @@ with col1:
     st.subheader("➕ Agregar transacción")
     with st.form("add_tx"):
         t_date = st.date_input("Fecha", value=today)
-        t_cat  = st.text_input("Categoría", "Comida")
+
+        # 🔽 Dropdown de categoría (derivado del JSON o fallback)
+        cat_options = get_display_categories()
+        default_cat = cat_options.index("Alimentación") if "Alimentación" in cat_options else 0
+        t_cat  = st.selectbox("Categoría", options=cat_options, index=default_cat)
+
         t_type = st.radio("Tipo", ["ingreso","gasto"], horizontal=True)
         t_amount = st.number_input(f"Monto ({st.session_state.currency})", min_value=0.0, step=0.01, format="%.2f")
         t_note = st.text_input("Nota", "")
         t_regular = st.radio("¿Es regular?", ["No","Sí"], horizontal=True)
         if st.form_submit_button("Guardar"):
-            if t_cat.strip() and t_amount > 0:
-                add_tx(conn, t_date.isoformat(), t_cat.strip(), t_type, t_amount, t_note.strip(), regular=(t_regular=="Sí"))
+            if t_cat and t_amount > 0:
+                add_tx(conn, t_date.isoformat(), t_cat, t_type, t_amount, t_note.strip(), regular=(t_regular=="Sí"))
                 st.success(f"✅ {t_type} de {money(t_amount, st.session_state.currency, st.session_state.locale)} en {t_cat} · regular: {t_regular}")
             else:
-                st.error("Por favor ingresa categoría y un monto > 0.")
+                st.error("Por favor selecciona una categoría y un monto > 0.")
 
     if show_verse:
         st.subheader("🙏 Versículo del día")
         st.info(verse_of_the_day())
 
     st.subheader("📥 Presupuesto (crear/actualizar)")
-    tx_df = fetch_df(conn)
-    cat_sugeridas = sorted(set(tx_df["category"].tolist())) if not tx_df.empty else ["Vivienda","Comida","Transporte","Salud","Ocio","Ahorro","Donaciones"]
-    b_cat = st.selectbox("Categoría", cat_sugeridas)
+    # usa el mismo set de categorías para presupuestos
+    b_cat = st.selectbox("Categoría", get_display_categories())
     b_amount = st.number_input(f"Monto mensual ({st.session_state.currency})", min_value=0.0, step=1.0, format="%.2f")
     if st.button("Guardar presupuesto"):
-        if b_cat.strip() and b_amount > 0:
-            upsert_budget(conn, b_cat.strip(), s_month, s_year, b_amount)
+        if b_cat and b_amount > 0:
+            upsert_budget(conn, b_cat, s_month, s_year, b_amount)
             st.success(f"💾 Presupuesto guardado para {b_cat} ({s_month}/{s_year}): {money(b_amount, st.session_state.currency, st.session_state.locale)}")
         else:
             st.error("Categoría y monto deben ser válidos.")
@@ -345,16 +468,16 @@ with col2:
             limite = money(float(r.amount), st.session_state.currency, st.session_state.locale)
             if r.pct >= 1.0:
                 st.error(f"🔴 {r.category}: {pct_txt} del presupuesto gastado (límite {limite})")
+                if auto_verse_on_alert:
+                    txt, theme = suggest_verse_for_category(r.category)
+                    if txt:
+                        st.info(f"📖 Sugerencia ({theme}): {txt}")
             elif r.pct >= 0.8:
                 st.warning(f"🟠 {r.category}: {pct_txt} del presupuesto gastado (límite {limite})")
-
-        with st.expander("🗑️ Eliminar presupuesto"):
-            bid_list = usage["id"].tolist()
-            if bid_list:
-                bid = st.selectbox("ID de presupuesto", bid_list)
-                if st.button("Eliminar presupuesto"):
-                    delete_budget(conn, int(bid))
-                    st.success(f"Presupuesto {bid} eliminado. Recarga para ver cambios.")
+                if auto_verse_on_alert:
+                    txt, theme = suggest_verse_for_category(r.category)
+                    if txt:
+                        st.info(f"📖 Sugerencia ({theme}): {txt}")
 
     st.subheader("🧠 Recomendaciones")
     recs = recommend_articles(conn, s_month, s_year, k=5)
@@ -370,4 +493,4 @@ with col2:
                     f"score: {score:.2f} (match={meta['match_tags']:.2f}, recency={meta['recency']:.2f})"
                 )
 
-st.caption("RVA 1909 (dominio público). Monedas ISO-4217 con Babel/pycountry. Versículo con toggle. Campo ‘regular’ persistido.")
+st.caption("RVA 1909 (dominio público). Monedas ISO-4217 (Babel/pycountry). Versículos por tema y sugerencias al 80%/100%. Categoría por dropdown. Campo ‘regular’ persistido.")
