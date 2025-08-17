@@ -4,14 +4,29 @@ from datetime import date, datetime, timedelta
 import pandas as pd
 import json, hashlib, os, unicodedata
 import babel
-
-# Monedas globales
 from babel.numbers import format_currency, get_currency_symbol
 import pycountry
 
+# =============== Config & estilos ===============
+def load_css(path="styles.css"):
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+st.set_page_config(page_title="Budgeting + Versículo + Recos", page_icon="📊", layout="wide")
+load_css()
+
+# <<<<<< HERO NUEVO >>>>>>
+st.markdown("""
+<div class="hero">
+  <h1>Budgeting <span style="color:#0a84ff;">+ Versículo</span> + Recos</h1>
+  <div class="sub">M5 · UI estilo Apple: tipografía SF, glass cards, sombras suaves y paleta clara.</div>
+</div>
+""", unsafe_allow_html=True)
+
 DB_PATH = "budget.db"
 
-# ===================== Utilidades de moneda / locale =====================
+# =============== Utilidades moneda / locale ===============
 def list_all_currencies():
     items, seen = [], set()
     try:
@@ -27,7 +42,7 @@ def list_all_currencies():
                 sym = ""
             items.append((code, name, sym))
     except Exception:
-        items = [("USD", "US Dollar", "$"), ("EUR", "Euro", "€"), ("CRC", "Costa Rican Colón", "₡")]
+        items = [("USD","US Dollar","$"), ("EUR","Euro","€"), ("CRC","Costa Rican Colón","₡")]
     items.sort(key=lambda x: x[0])
     return items
 
@@ -42,47 +57,45 @@ def money(amount: float, code: str, locale: str) -> str:
         except Exception: pass
         return f"{sym}{amount:,.2f}"
 
-# ===================== THEME KEYWORDS (español universal) =====================
+# =============== THEME KEYWORDS (ES) ===============
 THEME_KEYWORDS = {
-    "Hogar": ["hogar", "casa", "renta", "alquiler", "hipoteca", "servicios", "electricidad", "agua", "gas", "internet", "teléfono", "muebles", "electrodomésticos", "decoración"],
-    "Alimentación": ["alimento", "comida", "supermercado", "mercado", "restaurante", "delivery", "cafetería", "bebidas", "snacks"],
-    "Transporte": ["transporte", "gasolina", "peaje", "estacionamiento", "mantenimiento", "bus", "metro", "uber", "didi", "bicicleta", "moto", "avión"],
-    "Salud": ["salud", "medicina", "farmacia", "hospital", "clínica", "consulta", "doctor", "dentista", "odontología", "lentes", "seguro médico", "gimnasio"],
-    "Educación": ["educación", "universidad", "colegiatura", "libros", "cursos", "capacitaciones", "talleres", "idiomas"],
-    "Entretenimiento": ["entretenimiento", "suscripción", "streaming", "spotify", "netflix", "disney", "videojuegos", "ocio", "cine", "eventos", "conciertos"],
-    "Compras personales": ["compras", "ropa", "zapatos", "accesorios", "peluquería", "spa", "cosméticos", "perfumes", "cuidado personal"],
-    "Viajes": ["viaje", "vacaciones", "hotel", "vuelos", "excursiones", "turismo"],
-    "Deudas": ["deuda", "tarjeta de crédito", "préstamo", "hipoteca", "automotriz", "microcrédito"],
-    "Obligaciones": ["impuesto", "trámite", "seguro", "seguro auto", "seguro vivienda"],
-    "Ahorro e inversión": ["ahorro", "fondo", "emergencia", "inversión", "acciones", "criptomoneda", "retiro"],
-    "Solidaridad": ["donación", "caridad", "iglesia", "diezmo", "ofrenda", "regalo", "apoyo"],
-    "Familia": ["familia", "niños", "guardería", "cuidado de mayores", "mascotas"],
-    "Ingresos": ["ingreso", "salario", "freelance", "emprendimiento", "negocio", "bono", "inversiones"],
-    "Bienestar": ["bienestar", "ansiedad", "emergencia", "terapia", "recreación", "hobby", "descanso"]
+    "Hogar": ["hogar","casa","renta","alquiler","hipoteca","servicios","electricidad","agua","gas","internet","teléfono","muebles","electrodomésticos","decoración"],
+    "Alimentación": ["alimento","comida","supermercado","mercado","restaurante","delivery","cafetería","bebidas","snacks"],
+    "Transporte": ["transporte","gasolina","peaje","estacionamiento","mantenimiento","bus","metro","uber","didi","bicicleta","moto","avión"],
+    "Salud": ["salud","medicina","farmacia","hospital","clínica","consulta","doctor","dentista","odontología","lentes","seguro médico","gimnasio"],
+    "Educación": ["educación","universidad","colegiatura","libros","cursos","capacitaciones","talleres","idiomas"],
+    "Entretenimiento": ["entretenimiento","suscripción","streaming","spotify","netflix","disney","videojuegos","ocio","cine","eventos","conciertos"],
+    "Compras personales": ["compras","ropa","zapatos","accesorios","peluquería","spa","cosméticos","perfumes","cuidado personal"],
+    "Viajes": ["viaje","vacaciones","hotel","vuelos","excursiones","turismo"],
+    "Deudas": ["deuda","tarjeta de crédito","préstamo","hipoteca","automotriz","microcrédito"],
+    "Obligaciones": ["impuesto","trámite","seguro","seguro auto","seguro vivienda"],
+    "Ahorro e inversión": ["ahorro","fondo","emergencia","inversión","acciones","criptomoneda","retiro"],
+    "Solidaridad": ["donación","caridad","iglesia","diezmo","ofrenda","regalo","apoyo"],
+    "Familia": ["familia","niños","guardería","cuidado de mayores","mascotas"],
+    "Ingresos": ["ingreso","salario","freelance","emprendimiento","negocio","bono","inversiones"],
+    "Bienestar": ["bienestar","ansiedad","emergencia","terapia","recreación","hobby","descanso"]
 }
 
-# ===================== Normalización y carga de mapeo =====================
+# =============== Normalización y mapeo categoría->tema ===============
 def _norm(s: str) -> str:
     if not s: return ""
-    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    s = unicodedata.normalize("NFKD", s).encode("ascii","ignore").decode("ascii")
     return " ".join(s.lower().strip().split())
 
 _CATEGORY_THEME = None
 def load_category_theme_map(path="data/category_theme_map.json"):
-    """Carga category->tema desde JSON externo (español universal)"""
     global _CATEGORY_THEME
     if _CATEGORY_THEME is not None:
         return _CATEGORY_THEME
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path,"r",encoding="utf-8") as f:
             raw = json.load(f)
-        _CATEGORY_THEME = { _norm(k): v for k, v in raw.items() }
+        _CATEGORY_THEME = { _norm(k): v for k,v in raw.items() }
     except Exception:
         _CATEGORY_THEME = {}
     return _CATEGORY_THEME
 
 def get_display_categories():
-    """Devuelve categorías 'humanas' para los dropdowns (valores del map) con fallback."""
     cmap = load_category_theme_map()
     if cmap:
         cats = sorted(set(cmap.values()))
@@ -92,50 +105,38 @@ def get_display_categories():
                 "Ahorro e inversión","Solidaridad","Familia","Ingresos","Bienestar"]
     return cats
 
-def get_theme_for_category(category: str) -> str | None:
-    """Si ya es un tema conocido, regrésalo. Si no, intenta por map y heurística."""
-    if not category:
-        return None
-    # 0) Si el texto coincide directamente con un tema
+def get_theme_for_category(category: str) -> str|None:
+    if not category: return None
     if category in THEME_KEYWORDS:
         return category
-
     cat = _norm(category)
     cmap = load_category_theme_map()
-
-    # 1) exacto
     if cat in cmap:
         return cmap[cat]
-
-    # 2) substring
     for key, theme in cmap.items():
         if key and key in cat:
             return theme
-
-    # 3) heurística: busca palabras en THEME_KEYWORDS
     for theme, kws in THEME_KEYWORDS.items():
         for kw in kws:
             if _norm(kw) in cat:
                 return theme
     return None
 
-# ===================== Versículos =====================
+# =============== Versículos ===============
 _VERS_CACHE = None
 def load_verses(path="data/verses.json"):
     global _VERS_CACHE
-    if _VERS_CACHE is not None:
-        return _VERS_CACHE
+    if _VERS_CACHE is not None: return _VERS_CACHE
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path,"r",encoding="utf-8") as f:
             verses = json.load(f)
-        _VERS_CACHE = verses if isinstance(verses, list) else []
+        _VERS_CACHE = verses if isinstance(verses,list) else []
     except Exception:
         _VERS_CACHE = []
     return _VERS_CACHE
 
 def pick_deterministic(items, seed: str):
-    if not items:
-        return None
+    if not items: return None
     h = int(hashlib.sha256(seed.encode()).hexdigest(), 16)
     return items[h % len(items)]
 
@@ -158,21 +159,19 @@ def verses_by_theme(theme: str, limit=5):
     found = [v for v in verses if match(v)]
     if found:
         seed = f"{theme}-{date.today().isoformat()}"
-        idx = int(hashlib.sha256(seed.encode()).hexdigest(), 16) % len(found)
-        found = found[idx:] + found[:idx]
+        idx = int(hashlib.sha256(seed.encode()).hexdigest(),16) % len(found)
+        found = found[idx:]+found[:idx]
     return found[:limit]
 
 def suggest_verse_for_category(category: str):
     theme = get_theme_for_category(category)
-    if not theme:
-        return None, None
+    if not theme: return None, None
     lst = verses_by_theme(theme, limit=1)
-    if not lst:
-        return None, theme
+    if not lst: return None, theme
     v = lst[0]
     return f"{v['text']} — {v['book']} {v['chapter']}:{v['verse']}", theme
 
-# ===================== DB helpers =====================
+# =============== DB helpers ===============
 def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.execute("""CREATE TABLE IF NOT EXISTS transactions (
@@ -228,7 +227,7 @@ def kpis(conn):
     by_cat = df[df["type"]=="gasto"].groupby("category")["amount"].sum().sort_values(ascending=False) if not df.empty else pd.Series(dtype=float)
     return total_ing, total_gas, balance, by_cat
 
-# ===================== Presupuestos =====================
+# =============== Presupuestos ===============
 def upsert_budget(conn, category, month, year, amount):
     cur = conn.cursor()
     cur.execute("UPDATE budgets SET amount=? WHERE category=? AND month=? AND year=?",
@@ -276,10 +275,10 @@ def usage_with_alerts(conn, month, year):
     merged["status"] = merged["pct"].apply(status)
     return merged[["id","category","amount","spent","pct","status"]].sort_values("pct", ascending=False)
 
-# ===================== Recomendaciones =====================
+# =============== Recomendaciones ===============
 def load_articles(path="data/articles.json"):
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path,"r",encoding="utf-8") as f:
             raw = f.read().strip()
             if not raw: return []
             arts = json.loads(raw)
@@ -289,7 +288,6 @@ def load_articles(path="data/articles.json"):
     except json.JSONDecodeError:
         st.error("`data/articles.json` no es JSON válido. Revisa comas, llaves y comillas.")
         return []
-
     norm = []
     for a in arts:
         try:
@@ -305,7 +303,6 @@ def load_articles(path="data/articles.json"):
 def hot_categories(conn, month, year):
     usage = usage_with_alerts(conn, month, year)
     hot = set(usage.loc[usage["pct"]>=0.7, "category"].tolist())
-
     df = fetch_df(conn)
     if not df.empty:
         cutoff = date.today() - timedelta(days=30)
@@ -332,24 +329,16 @@ def recommend_articles(conn, month, year, k=5):
     scored.sort(key=lambda x: x[0], reverse=True)
     return scored[:k]
 
-# ===================== UI =====================
-st.set_page_config(page_title="Budgeting + Versículo + Recos", page_icon="📊", layout="wide")
-st.title("📊 Budgeting + 🙏 Versículo del día + 🧠 Recomendaciones")
-st.caption("M1–M4: moneda global, 'regular', presupuestos/alertas, recomendaciones y versículos por tema (categoría como dropdown).")
-
+# =============== Sidebar ===============
 conn = get_conn()
 
-# ---- Sidebar ----
 st.sidebar.header("⚙️ Preferencias")
-
-# Locale
 if "locale" not in st.session_state: st.session_state.locale = "es-CR"
 st.session_state.locale = st.sidebar.text_input("Locale (ej. es-CR, es-MX, en-US)", value=st.session_state.locale)
 
-# Moneda global
 if "currency" not in st.session_state: st.session_state.currency = "CRC"
-labels = [f"{c} — {n}" + (f" ({s})" if s else "") for c, n, s in ALL_CURRENCIES]
-codes  = [c for c, _, _ in ALL_CURRENCIES]
+labels = [f"{c} — {n}" + (f" ({s})" if s else "") for c,n,s in ALL_CURRENCIES]
+codes  = [c for c,_,_ in ALL_CURRENCIES]
 default_index = codes.index(st.session_state.currency) if st.session_state.currency in codes else (codes.index("CRC") if "CRC" in codes else 0)
 sel = st.sidebar.selectbox("Moneda", options=list(range(len(codes))), index=default_index, format_func=lambda i: labels[i])
 st.session_state.currency = codes[sel]
@@ -374,25 +363,26 @@ today = date.today()
 s_month = st.sidebar.number_input("Mes", 1, 12, value=today.month)
 s_year  = st.sidebar.number_input("Año", 2000, 2100, value=today.year)
 
-export_option = st.sidebar.selectbox("Exportar", ["Transacciones", "Presupuestos"])
+export_option = st.sidebar.selectbox("Exportar", ["Transacciones","Presupuestos"])
 if st.sidebar.button("Descargar CSV"):
     df_export = fetch_df(conn) if export_option=="Transacciones" else fetch_budgets(conn, s_month, s_year)
     csv_bytes = df_export.to_csv(index=False).encode("utf-8")
     st.sidebar.download_button("Descargar", data=csv_bytes, file_name=f"{export_option.lower()}_{s_year}-{s_month:02d}.csv", mime="text/csv")
 
+# =============== Layout principal ===============
 col1, col2 = st.columns([1,2])
 
-# ---- Columna izquierda ----
+# ---- Transacciones (card) ----
 with col1:
-    st.subheader("➕ Agregar transacción")
+    st.markdown('<div class="app-card">', unsafe_allow_html=True)
+    # <<<<<< SECTION TITLE NUEVO >>>>>>
+    st.markdown('<div class="section-title">➕ Agregar transacción</div>', unsafe_allow_html=True)
+
     with st.form("add_tx"):
         t_date = st.date_input("Fecha", value=today)
-
-        # 🔽 Dropdown de categoría (derivado del JSON o fallback)
         cat_options = get_display_categories()
         default_cat = cat_options.index("Alimentación") if "Alimentación" in cat_options else 0
         t_cat  = st.selectbox("Categoría", options=cat_options, index=default_cat)
-
         t_type = st.radio("Tipo", ["ingreso","gasto"], horizontal=True)
         t_amount = st.number_input(f"Monto ({st.session_state.currency})", min_value=0.0, step=0.01, format="%.2f")
         t_note = st.text_input("Nota", "")
@@ -403,13 +393,16 @@ with col1:
                 st.success(f"✅ {t_type} de {money(t_amount, st.session_state.currency, st.session_state.locale)} en {t_cat} · regular: {t_regular}")
             else:
                 st.error("Por favor selecciona una categoría y un monto > 0.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
     if show_verse:
-        st.subheader("🙏 Versículo del día")
+        st.markdown('<div class="app-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">🙏 Versículo del día</div>', unsafe_allow_html=True)
         st.info(verse_of_the_day())
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.subheader("📥 Presupuesto (crear/actualizar)")
-    # usa el mismo set de categorías para presupuestos
+    st.markdown('<div class="app-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📥 Presupuesto (crear/actualizar)</div>', unsafe_allow_html=True)
     b_cat = st.selectbox("Categoría", get_display_categories())
     b_amount = st.number_input(f"Monto mensual ({st.session_state.currency})", min_value=0.0, step=1.0, format="%.2f")
     if st.button("Guardar presupuesto"):
@@ -418,10 +411,13 @@ with col1:
             st.success(f"💾 Presupuesto guardado para {b_cat} ({s_month}/{s_year}): {money(b_amount, st.session_state.currency, st.session_state.locale)}")
         else:
             st.error("Categoría y monto deben ser válidos.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# ---- Columna derecha ----
+# ---- Historial (card) + KPIs (card) + Presupuestos (card) ----
 with col2:
-    st.subheader("🧾 Historial de transacciones")
+    # Historial
+    st.markdown('<div class="app-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🧾 Historial de transacciones</div>', unsafe_allow_html=True)
     df = fetch_df(conn)
     if df.empty:
         st.write("Sin transacciones aún.")
@@ -438,17 +434,31 @@ with col2:
                 if st.button("Eliminar selección"):
                     delete_tx(conn, int(rid))
                     st.success(f"Eliminada ID {rid}. Recarga para ver cambios.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.subheader("📈 KPIs")
+    # KPIs
+    st.markdown('<div class="app-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📈 KPIs</div>', unsafe_allow_html=True)
     total_ing, total_gas, balance, by_cat = kpis(conn)
     c1, c2, c3 = st.columns(3)
-    c1.metric("Ingresos", money(total_ing, st.session_state.currency, st.session_state.locale))
-    c2.metric("Gastos",  money(total_gas, st.session_state.currency, st.session_state.locale))
-    c3.metric("Balance", money(balance,   st.session_state.currency, st.session_state.locale))
+    for label, value, col in [
+        ("Ingresos", money(total_ing, st.session_state.currency, st.session_state.locale), c1),
+        ("Gastos",  money(total_gas, st.session_state.currency, st.session_state.locale), c2),
+        ("Balance", money(balance,   st.session_state.currency, st.session_state.locale), c3),
+    ]:
+        with col:
+            st.markdown(f'''
+            <div class="metric-card">
+              <div class="metric-label">{label}</div>
+              <div class="metric-value">{value}</div>
+            </div>''', unsafe_allow_html=True)
     if len(by_cat) > 0:
         st.bar_chart(by_cat, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.subheader(f"💰 Presupuestos {s_month:02d}/{s_year}")
+    # Presupuestos
+    st.markdown('<div class="app-card">', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title">💰 Presupuestos {s_month:02d}/{s_year}</div>', unsafe_allow_html=True)
     bdf = fetch_budgets(conn, s_month, s_year)
     if bdf.empty:
         st.info("No hay presupuestos para este periodo. Crea uno en la columna izquierda.")
@@ -478,19 +488,22 @@ with col2:
                     txt, theme = suggest_verse_for_category(r.category)
                     if txt:
                         st.info(f"📖 Sugerencia ({theme}): {txt}")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.subheader("🧠 Recomendaciones")
+    # Recomendaciones
+    st.markdown('<div class="app-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🧠 Recomendaciones</div>', unsafe_allow_html=True)
     recs = recommend_articles(conn, s_month, s_year, k=5)
     if not recs:
         st.info("Aún no hay recomendaciones. Verifica `data/articles.json` y agrega transacciones/presupuestos.")
     else:
         for score, a, meta in recs:
-            with st.container(border=True):
-                st.write(f"**{a['title']}** — [{a['url']}]({a['url']})")
-                st.caption(
-                    f"tags: {', '.join(a['tags'])} · "
-                    f"popularidad: {int(a['popularity'])} · "
-                    f"score: {score:.2f} (match={meta['match_tags']:.2f}, recency={meta['recency']:.2f})"
-                )
+            st.markdown(f"""
+            <div class="app-card" style="margin-bottom:10px;">
+              <div><strong>{a['title']}</strong> — <a href="{a['url']}" target="_blank">{a['url']}</a></div>
+              <div style="color:#6e6e73;">tags: {', '.join(a['tags'])} · popularidad: {int(a['popularity'])} · score: {score:.2f} (match={meta['match_tags']:.2f}, recency={meta['recency']:.2f})</div>
+            </div>
+            """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 st.caption("RVA 1909 (dominio público). Monedas ISO-4217 (Babel/pycountry). Versículos por tema y sugerencias al 80%/100%. Categoría por dropdown. Campo ‘regular’ persistido.")
