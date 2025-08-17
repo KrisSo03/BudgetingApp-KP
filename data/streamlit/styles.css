@@ -1,0 +1,138 @@
+/* ---------- Fuentes tipo Apple ---------- */
+@import url('https://fonts.cdnfonts.com/css/sf-pro-display');
+@import url('https://fonts.cdnfonts.com/css/sf-pro-text');
+
+:root{
+  --bg:#f5f7fb;
+  --panel:#ffffffcc;         /* glass (ligero) */
+  --panel-solid:#ffffff;
+  --text:#0b0b0c;
+  --muted:#6e6e73;
+  --accent:#0a84ff;
+  --accent-2:#36c;
+  --border:rgba(12,12,13,0.08);
+  --shadow:0 10px 30px rgba(0,0,0,.06);
+  --shadow-strong:0 18px 40px rgba(0,0,0,.10);
+  --radius:18px;
+}
+
+html, body, [class*="block-container"]{
+  font-family:'SF Pro Text','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif !important;
+  color:var(--text);
+  background:linear-gradient(180deg,#f9fbff 0%,#f5f7fb 100%);
+}
+
+/* Oculta borde superior y barra default */
+header[data-testid="stHeader"]{background:transparent;}
+footer{visibility:hidden}
+
+/* ---------- Layout ---------- */
+.app-card{
+  background:var(--panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  padding:20px 22px;
+  transition: box-shadow .2s ease, transform .08s ease;
+}
+.app-card:hover{ box-shadow:var(--shadow-strong); transform: translateY(-1px); }
+
+.section-title{
+  display:flex; align-items:center; gap:10px;
+  font-weight:800; letter-spacing:-.02em;
+  font-size:22px; margin:4px 0 14px;
+}
+
+/* ---------- Hero ---------- */
+.hero{
+  border-radius:22px;
+  padding:18px 22px;
+  background:linear-gradient(120deg,#ffffff 20%, #eef4ff 100%);
+  border:1px solid var(--border);
+  box-shadow:var(--shadow);
+}
+.hero h1{
+  margin:0;
+  font-size:34px; font-weight:900; letter-spacing:-.03em;
+}
+.hero .sub{ color:var(--muted); margin-top:4px; }
+
+/* ---------- Botones ---------- */
+.stButton > button{
+  background:var(--text) !important;
+  color:#fff !important;
+  border:none !important;
+  border-radius:999px !important;      /* pill */
+  padding:10px 16px !important;
+  box-shadow:0 6px 16px rgba(0,0,0,.12);
+  transition: transform .08s ease, box-shadow .2s ease, background .2s ease;
+}
+.stButton > button:hover{
+  transform: translateY(-1px);
+  box-shadow:0 10px 24px rgba(0,0,0,.16);
+  background:#000 !important;
+}
+
+/* ---------- Inputs ---------- */
+.stTextInput > div > div input,
+.stNumberInput input,
+.stDateInput input{
+  border-radius:12px !important;
+}
+div[data-baseweb="select"] > div{
+  border-radius:12px !important;
+  border-color:var(--border) !important;
+}
+:focus-visible{ outline: none; }
+.stTextInput:focus-within,
+.stNumberInput:focus-within,
+.stDateInput:focus-within,
+div[data-baseweb="select"]:focus-within{
+  box-shadow:0 0 0 4px rgba(10,132,255,.12);
+  border-radius:12px;
+}
+
+/* ---------- Métricas ---------- */
+.metric-card{
+  background:linear-gradient(180deg,#fff,#f6f7fb);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:14px 16px;
+  box-shadow:var(--shadow);
+}
+.metric-label{ color:var(--muted); font-size:12px; }
+.metric-value{ font-size:24px; font-weight:800; letter-spacing:-.02em; }
+
+/* ---------- Tablas ---------- */
+[data-testid="stDataFrame"]{
+  border-radius:16px;
+  overflow:hidden;
+  border:1px solid var(--border);
+  box-shadow:var(--shadow);
+}
+
+/* ---------- Expander ---------- */
+.stExpander{
+  border:1px solid var(--border) !important;
+  border-radius:16px !important;
+}
+
+/* ---------- Sidebar ---------- */
+section[data-testid="stSidebar"]{
+  background:var(--panel-solid) !important;
+  border-right:1px solid var(--border);
+}
+
+/* ---------- Badges / chips ---------- */
+.badge{
+  display:inline-block;
+  background:#eef4ff;
+  color:#2b63c0;
+  border:1px solid #dbe7ff;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:600;
+}
